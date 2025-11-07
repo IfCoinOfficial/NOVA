@@ -1,0 +1,19 @@
+{
+  "name": "nova-prices-server",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "NOVA 가격 프록시 서버",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "axios": "^1.6.2"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}
