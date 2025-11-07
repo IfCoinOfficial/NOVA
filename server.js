@@ -18,12 +18,17 @@ const PORT = process.env.PORT || 3001;
 // 가격 저장 파일 경로
 const PRICES_FILE = path.join(__dirname, 'prices.json');
 
+// ============ POL 가격 캐싱 (30분 주기) ============
+let cachedPolPrice = 0.45;
+let lastPolFetchTime = 0;
+const POL_CACHE_DURATION = 30 * 60 * 1000;  // 30분
+
 // 기본 가격
 const DEFAULT_PRICES = {
   passes: {
-    basic: 10,      // USDT
-    premium: 15,   // USDT
-    ultimate: 22   // USDT
+    basic: 50,      // USDT
+    premium: 150,   // USDT
+    ultimate: 300   // USDT
   },
   cores: {
     boost: 1,       // USDT
@@ -71,16 +76,28 @@ initPricesFile();
 // ============ API 엔드포인트 ============
 
 /**
- * 1️⃣ POL 가격 프록시 (CoinMarketCap API)
+ * 1️⃣ POL 가격 프록시 (CoinMarketCap API - 30분 캐싱)
  */
 app.get('/api/prices/pol', async (req, res) => {
   try {
-    if (!CMC_API_KEY) {
-      console.warn('⚠️ CMC_API_KEY 환경변수가 설정되지 않았습니다');
-      return res.json({ price: 0.45, warning: 'API key not configured' });
+    const now = Date.now();
+    
+    // ✅ 캐시 확인: 30분 이내면 캐시된 가격 사용
+    if (now - lastPolFetchTime < POL_CACHE_DURATION) {
+      console.log(`💾 캐시된 POL 가격 사용: $${cachedPolPrice} (${Math.round((POL_CACHE_DURATION - (now - lastPolFetchTime)) / 60000)}분 후 갱신)`);
+      return res.json({ 
+        price: cachedPolPrice,
+        timestamp: new Date().toISOString(),
+        cached: true
+      });
     }
 
-    console.log('🔄 CoinMarketCap에서 POL 가격 조회 중...');
+    if (!CMC_API_KEY) {
+      console.warn('⚠️ CMC_API_KEY 환경변수가 설정되지 않았습니다');
+      return res.json({ price: cachedPolPrice, warning: 'API key not configured' });
+    }
+
+    console.log('🔄 CoinMarketCap에서 POL 가격 신규 조회 중...');
     
     const response = await axios.get(
       'https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest?symbol=POL&convert=USD',
@@ -92,17 +109,20 @@ app.get('/api/prices/pol', async (req, res) => {
       }
     );
     
-    const polPrice = response.data.data?.POL?.quote?.USD?.price || 0.45;
-    console.log(`✅ POL 가격: $${polPrice}`);
+    cachedPolPrice = response.data.data?.POL?.quote?.USD?.price || 0.45;
+    lastPolFetchTime = now;
+    
+    console.log(`✅ POL 가격 신규 업데이트: $${cachedPolPrice}`);
     
     res.json({ 
-      price: polPrice,
-      timestamp: new Date().toISOString()
+      price: cachedPolPrice,
+      timestamp: new Date().toISOString(),
+      cached: false
     });
   } catch (error) {
     console.error('❌ POL 가격 조회 실패:', error.message);
     res.json({ 
-      price: 0.45, 
+      price: cachedPolPrice,
       error: error.message,
       timestamp: new Date().toISOString()
     });
@@ -226,6 +246,7 @@ app.post('/api/prices/reset', (req, res) => {
 app.get('/health', (req, res) => {
   res.json({ 
     status: 'ok',
+    polCacheDuration: `${Math.round((POL_CACHE_DURATION - (Date.now() - lastPolFetchTime)) / 60000)}분 남음`,
     timestamp: new Date().toISOString(),
     uptime: process.uptime()
   });
@@ -237,17 +258,18 @@ app.listen(PORT, () => {
   console.log('\n' + '='.repeat(60));
   console.log('✅ NOVA 가격 프록시 서버 실행 중');
   console.log('='.repeat(60));
-  console.log(`🌐 서버 URL: http://localhost:${PORT}`);
+  console.log(`🌐 서버 URL: https://nova-sfyz.onrender.com`);
   console.log(`📊 가격 파일: ${PRICES_FILE}`);
   console.log(`🔑 CMC API: ${CMC_API_KEY ? '✅ 설정됨' : '⚠️ 설정 안 됨'}`);
+  console.log(`⏱️ POL 가격 캐시 주기: 30분`);
   console.log('='.repeat(60));
   console.log('\n📋 사용 가능한 엔드포인트:');
-  console.log(`  GET  /api/prices/pol       - POL 실시간 가격`);
-  console.log(`  GET  /api/prices/all       - 모든 가격 조회`);
-  console.log(`  POST /api/prices/passes    - 패스 가격 업데이트`);
-  console.log(`  POST /api/prices/cores     - 코어 가격 업데이트`);
-  console.log(`  POST /api/prices/reset     - 기본값으로 초기화`);
-  console.log(`  GET  /health               - 헬스 체크`);
+  console.log(`  GET  https://nova-sfyz.onrender.com/api/prices/pol       - POL 실시간 가격 (30분 캐시)`);
+  console.log(`  GET  https://nova-sfyz.onrender.com/api/prices/all       - 모든 가격 조회`);
+  console.log(`  POST https://nova-sfyz.onrender.com/api/prices/passes    - 패스 가격 업데이트`);
+  console.log(`  POST https://nova-sfyz.onrender.com/api/prices/cores     - 코어 가격 업데이트`);
+  console.log(`  POST https://nova-sfyz.onrender.com/api/prices/reset     - 기본값으로 초기화`);
+  console.log(`  GET  https://nova-sfyz.onrender.com/health               - 헬스 체크`);
   console.log('\n');
 });
 
