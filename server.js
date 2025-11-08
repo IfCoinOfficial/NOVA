@@ -6,12 +6,13 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const app = express();
 
+const app = express();
 app.use(cors());
 app.use(express.json());
 
 // ============ 환경 변수 설정 ============
+
 const CMC_API_KEY = process.env.CMC_API_KEY || '';
 const ADMIN_API_KEY = process.env.ADMIN_API_KEY || 'your-secure-admin-key-change-this';  // 👈 여기 수정!
 const PORT = process.env.PORT || 3001;
@@ -20,6 +21,7 @@ const PORT = process.env.PORT || 3001;
 const PRICES_FILE = path.join(__dirname, 'prices.json');
 
 // ============ POL 가격 캐싱 (30분 주기) ============
+
 let cachedPolPrice = 0.45;
 let lastPolFetchTime = 0;
 const POL_CACHE_DURATION = 30 * 60 * 1000;  // 30분
@@ -72,6 +74,7 @@ function savePrices(prices) {
 }
 
 // ============ 보안: API 키 인증 미들웨어 ============
+
 function authenticateAdminKey(req, res, next) {
   const providedKey = req.headers['x-admin-key'];
   
@@ -161,6 +164,44 @@ app.get('/api/prices/all', (req, res) => {
     res.status(500).json({ 
       error: error.message,
       prices: DEFAULT_PRICES
+    });
+  }
+});
+
+/**
+ * 6️⃣ 패스 가격 조회 (누구나 접근) - 앱용 GET 엔드포인트
+ * ⭐ NEW - 이 엔드포인트가 추가되었습니다!
+ */
+app.get('/api/prices/passes', (req, res) => {
+  try {
+    const prices = readPrices();
+    console.log('✅ 패스 가격 조회:', prices.passes);
+    
+    res.json(prices.passes);
+  } catch (error) {
+    console.error('❌ 패스 가격 조회 실패:', error.message);
+    res.status(500).json({ 
+      error: error.message,
+      passes: DEFAULT_PRICES.passes
+    });
+  }
+});
+
+/**
+ * 7️⃣ 코어 가격 조회 (누구나 접근) - 앱용 GET 엔드포인트
+ * ⭐ NEW - 이 엔드포인트가 추가되었습니다!
+ */
+app.get('/api/prices/cores', (req, res) => {
+  try {
+    const prices = readPrices();
+    console.log('✅ 코어 가격 조회:', prices.cores);
+    
+    res.json(prices.cores);
+  } catch (error) {
+    console.error('❌ 코어 가격 조회 실패:', error.message);
+    res.status(500).json({ 
+      error: error.message,
+      cores: DEFAULT_PRICES.cores
     });
   }
 });
@@ -285,6 +326,8 @@ app.listen(PORT, () => {
   console.log('\n📋 사용 가능한 엔드포인트:');
   console.log(`  GET  https://nova-sfyz.onrender.com/api/prices/pol       - POL 실시간 가격 (30분 캐시, 인증 불필요)`);
   console.log(`  GET  https://nova-sfyz.onrender.com/api/prices/all       - 모든 가격 조회 (인증 불필요)`);
+  console.log(`  GET  https://nova-sfyz.onrender.com/api/prices/passes    - 패스 가격 조회 (인증 불필요) ⭐ NEW`);
+  console.log(`  GET  https://nova-sfyz.onrender.com/api/prices/cores     - 코어 가격 조회 (인증 불필요) ⭐ NEW`);
   console.log(`  POST https://nova-sfyz.onrender.com/api/prices/passes    - 패스 가격 업데이트 (🔐 API 키 필수)`);
   console.log(`  POST https://nova-sfyz.onrender.com/api/prices/cores     - 코어 가격 업데이트 (🔐 API 키 필수)`);
   console.log(`  POST https://nova-sfyz.onrender.com/api/prices/reset     - 기본값으로 초기화 (🔐 API 키 필수)`);
@@ -298,3 +341,4 @@ app.listen(PORT, () => {
 process.on('unhandledRejection', (reason, promise) => {
   console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
 });
+
