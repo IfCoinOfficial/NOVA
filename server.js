@@ -6,13 +6,12 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
 const app = express();
+
 app.use(cors());
 app.use(express.json());
 
 // ============ 환경 변수 설정 ============
-
 const CMC_API_KEY = process.env.CMC_API_KEY || '';
 const ADMIN_API_KEY = process.env.ADMIN_API_KEY || 'your-secure-admin-key-change-this';  // 👈 여기 수정!
 const PORT = process.env.PORT || 3001;
@@ -21,7 +20,6 @@ const PORT = process.env.PORT || 3001;
 const PRICES_FILE = path.join(__dirname, 'prices.json');
 
 // ============ POL 가격 캐싱 (30분 주기) ============
-
 let cachedPolPrice = 0.45;
 let lastPolFetchTime = 0;
 const POL_CACHE_DURATION = 30 * 60 * 1000;  // 30분
@@ -34,7 +32,39 @@ const DEFAULT_PRICES = {
     ultimate: 300   // USDT
   },
   cores: {
-    boost: 1,       // USDT
+    boost: {
+      // 부스트 코어 차등 가격 (0~29개)
+      0: 5,
+      1: 10,
+      2: 11,
+      3: 12,
+      4: 13,
+      5: 14,
+      6: 15,
+      7: 16,
+      8: 17,
+      9: 18,
+      10: 19,
+      11: 20,
+      12: 21,
+      13: 22,
+      14: 23,
+      15: 24,
+      16: 25,
+      17: 26,
+      18: 27,
+      19: 28,
+      20: 29,
+      21: 30,
+      22: 31,
+      23: 32,
+      24: 33,
+      25: 34,
+      26: 35,
+      27: 36,
+      28: 37,
+      29: 38
+    },
     nft: 2,         // USDT
     point: 3        // USDT
   },
@@ -156,7 +186,7 @@ app.get('/api/prices/pol', async (req, res) => {
 app.get('/api/prices/all', (req, res) => {
   try {
     const prices = readPrices();
-    console.log('✅ 모든 가격 조회:', prices);
+    console.log('✅ 모든 가격 조회');
     
     res.json(prices);
   } catch (error) {
@@ -169,8 +199,7 @@ app.get('/api/prices/all', (req, res) => {
 });
 
 /**
- * 6️⃣ 패스 가격 조회 (누구나 접근) - 앱용 GET 엔드포인트
- * ⭐ NEW - 이 엔드포인트가 추가되었습니다!
+ * 3️⃣ 패스 가격 조회 (누구나 접근) - 앱용 GET 엔드포인트
  */
 app.get('/api/prices/passes', (req, res) => {
   try {
@@ -188,13 +217,13 @@ app.get('/api/prices/passes', (req, res) => {
 });
 
 /**
- * 7️⃣ 코어 가격 조회 (누구나 접근) - 앱용 GET 엔드포인트
- * ⭐ NEW - 이 엔드포인트가 추가되었습니다!
+ * 4️⃣ 코어 가격 조회 (누구나 접근) - 앱용 GET 엔드포인트
+ * ✅ 부스트 코어 차등 가격 지원!
  */
 app.get('/api/prices/cores', (req, res) => {
   try {
     const prices = readPrices();
-    console.log('✅ 코어 가격 조회:', prices.cores);
+    console.log('✅ 코어 가격 조회');
     
     res.json(prices.cores);
   } catch (error) {
@@ -207,7 +236,7 @@ app.get('/api/prices/cores', (req, res) => {
 });
 
 /**
- * 3️⃣ 패스 가격 업데이트 (관리자만 - API 키 필수)
+ * 5️⃣ 패스 가격 업데이트 (관리자만 - API 키 필수)
  */
 app.post('/api/prices/passes', authenticateAdminKey, (req, res) => {
   try {
@@ -243,31 +272,57 @@ app.post('/api/prices/passes', authenticateAdminKey, (req, res) => {
 });
 
 /**
- * 4️⃣ 코어 가격 업데이트 (관리자만 - API 키 필수)
+ * 6️⃣ 코어 가격 업데이트 (관리자만 - API 키 필수)
+ * ✅ 부스트 코어 차등 가격 지원!
  */
 app.post('/api/prices/cores', authenticateAdminKey, (req, res) => {
   try {
     const { boost, nft, point } = req.body;
     
+    // ✅ boost는 객체 (차등 가격), nft와 point는 숫자
     if (boost === undefined || nft === undefined || point === undefined) {
       return res.status(400).json({ 
-        error: '모든 가격(boost, nft, point)을 입력해주세요',
+        error: '모든 가격(boost 객체, nft, point)을 입력해주세요',
+        example: {
+          boost: { 0: 5, 1: 10, 2: 11 },
+          nft: 2,
+          point: 3
+        },
         received: req.body
       });
     }
     
+    // ✅ boost가 객체인지 확인
+    if (typeof boost !== 'object' || Array.isArray(boost)) {
+      return res.status(400).json({ 
+        error: 'boost는 { "0": 5, "1": 10, ... } 형식의 객체여야 합니다',
+        received: typeof boost
+      });
+    }
+    
     const prices = readPrices();
+    
+    // ✅ boost 가격 정규화 (문자열 → 숫자)
+    const normalizedBoost = {};
+    for (const [count, price] of Object.entries(boost)) {
+      normalizedBoost[count] = parseFloat(price);
+    }
+    
     prices.cores = { 
-      boost: parseFloat(boost), 
+      boost: normalizedBoost,
       nft: parseFloat(nft), 
       point: parseFloat(point) 
     };
     savePrices(prices);
     
-    console.log('✅ 코어 가격 업데이트:', prices.cores);
+    console.log('✅ 코어 가격 업데이트 완료');
+    console.log('   부스트 코어 차등 가격:', Object.keys(normalizedBoost).length + '개 단계');
+    console.log('   NFT:', nft, 'USDT, 포인트:', point, 'USDT');
+    
     res.json({ 
       success: true, 
       prices: prices.cores,
+      boostTiers: Object.keys(normalizedBoost).length,
       timestamp: new Date().toISOString()
     });
   } catch (error) {
@@ -279,7 +334,7 @@ app.post('/api/prices/cores', authenticateAdminKey, (req, res) => {
 });
 
 /**
- * 5️⃣ 가격 초기화 (관리자만 - API 키 필수)
+ * 7️⃣ 가격 초기화 (관리자만 - API 키 필수)
  */
 app.post('/api/prices/reset', authenticateAdminKey, (req, res) => {
   try {
@@ -322,18 +377,25 @@ app.listen(PORT, () => {
   console.log(`🔑 CMC API: ${CMC_API_KEY ? '✅ 설정됨' : '⚠️ 설정 안 됨'}`);
   console.log(`🔐 Admin API Key: ${ADMIN_API_KEY ? '✅ 설정됨' : '⚠️ 기본값 사용 중'}`);
   console.log(`⏱️ POL 가격 캐시 주기: 30분`);
+  console.log(`🎯 부스트 코어: 차등 가격 시스템 (0~29개)`);
   console.log('='.repeat(70));
   console.log('\n📋 사용 가능한 엔드포인트:');
   console.log(`  GET  https://nova-sfyz.onrender.com/api/prices/pol       - POL 실시간 가격 (30분 캐시, 인증 불필요)`);
   console.log(`  GET  https://nova-sfyz.onrender.com/api/prices/all       - 모든 가격 조회 (인증 불필요)`);
-  console.log(`  GET  https://nova-sfyz.onrender.com/api/prices/passes    - 패스 가격 조회 (인증 불필요) ⭐ NEW`);
-  console.log(`  GET  https://nova-sfyz.onrender.com/api/prices/cores     - 코어 가격 조회 (인증 불필요) ⭐ NEW`);
+  console.log(`  GET  https://nova-sfyz.onrender.com/api/prices/passes    - 패스 가격 조회 (인증 불필요)`);
+  console.log(`  GET  https://nova-sfyz.onrender.com/api/prices/cores     - 코어 가격 조회 - 부스트 차등 가격 포함! (인증 불필요) ⭐`);
   console.log(`  POST https://nova-sfyz.onrender.com/api/prices/passes    - 패스 가격 업데이트 (🔐 API 키 필수)`);
-  console.log(`  POST https://nova-sfyz.onrender.com/api/prices/cores     - 코어 가격 업데이트 (🔐 API 키 필수)`);
+  console.log(`  POST https://nova-sfyz.onrender.com/api/prices/cores     - 코어 가격 업데이트 - 부스트 차등 가격 지원! (🔐 API 키 필수) ⭐`);
   console.log(`  POST https://nova-sfyz.onrender.com/api/prices/reset     - 기본값으로 초기화 (🔐 API 키 필수)`);
   console.log(`  GET  https://nova-sfyz.onrender.com/health               - 헬스 체크`);
   console.log('\n🔐 POST 요청 시 헤더에 다음을 추가:');
   console.log(`  Header: x-admin-key: ${ADMIN_API_KEY}`);
+  console.log('\n💡 부스트 코어 POST 요청 예시:');
+  console.log(`  {
+    "boost": { "0": 5, "1": 10, "2": 11, ... "29": 38 },
+    "nft": 2,
+    "point": 3
+  }`);
   console.log('\n');
 });
 
@@ -341,4 +403,3 @@ app.listen(PORT, () => {
 process.on('unhandledRejection', (reason, promise) => {
   console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
 });
-
