@@ -37,10 +37,14 @@ const DEFAULT_PRICES_USD = {
 };
 
 function calculateWei(usdAmount, tokenPrice) {
-  const WEI_PER_TOKEN = BigInt(10) ** BigInt(18);
-  const usdBig = BigInt(Math.round(usdAmount * 1_000_000));
-  const priceBig = BigInt(Math.round(tokenPrice * 1_000_000));
-  const result = (usdBig * WEI_PER_TOKEN * BigInt(1_000_000)) / priceBig;
+  const WEI = BigInt(10) ** BigInt(18);
+
+  const usdBig = BigInt(Math.round(usdAmount * 1_000_000));   // USD × 1e6
+  const priceBig = BigInt(Math.round(tokenPrice * 1_000_000)); // price × 1e6
+
+  // Wei = (USD × 1e6 / price × 1e6) × 1e18 = (usdBig * 1e18) / priceBig
+  const result = (usdBig * WEI) / priceBig;
+
   return result.toString();
 }
 
