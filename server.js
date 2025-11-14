@@ -357,7 +357,7 @@ const router = new AlphaRouter({
 
 // QuoterV2 (멀티홉 지원)
 
-import QuoterABI from "@uniswap/v3-periphery/artifacts/contracts/lens/QuoterV2.sol/QuoterV2.json";
+import QuoterABI from "@uniswap/v3-periphery/artifacts/contracts/lens/QuoterV2.sol/QuoterV2.json" assert { type: "json" };
 
 const QUOTER_V2 = "0x61fFE014bA1793bC6C236E6bF60A4e37fE404E38";
 
