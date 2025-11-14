@@ -6,21 +6,19 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const app = express();
 
+const app = express();
 app.use(cors({ origin: true, credentials: false, methods: ['GET', 'POST'], allowedHeaders: ['Content-Type', 'x-admin-key'] }));
 app.use(express.json());
 
 const CMC_API_KEY = process.env.CMC_API_KEY || '';
 const ADMIN_API_KEY = process.env.ADMIN_API_KEY || 'your-secure-admin-key-change-this';
 const PORT = process.env.PORT || 3001;
-
 const PRICES_FILE = path.join(__dirname, 'prices.json');
 
 let cachedPolPrice = 0.182;
 let lastPolFetchTime = 0;
 const POL_CACHE_DURATION = 30 * 60 * 1000;
-
 const NOVA_PRICE = 0.00007;
 
 const DEFAULT_PRICES_USD = {
@@ -38,13 +36,9 @@ const DEFAULT_PRICES_USD = {
 
 function calculateWei(usdAmount, tokenPrice) {
   const WEI = BigInt(10) ** BigInt(18);
-
-  const usdBig = BigInt(Math.round(usdAmount * 1_000_000));   // USD × 1e6
-  const priceBig = BigInt(Math.round(tokenPrice * 1_000_000)); // price × 1e6
-
-  // Wei = (USD × 1e6 / price × 1e6) × 1e18 = (usdBig * 1e18) / priceBig
+  const usdBig = BigInt(Math.round(usdAmount * 1_000_000));
+  const priceBig = BigInt(Math.round(tokenPrice * 1_000_000));
   const result = (usdBig * WEI) / priceBig;
-
   return result.toString();
 }
 
@@ -274,4 +268,156 @@ app.listen(PORT, () => {
 
 process.on('unhandledRejection', (reason, promise) => {
   console.error('Unhandled Rejection:', reason);
+});
+
+// ============================================
+// 🔄 Uniswap 스왑 API 추가 (아래에 덧붙임)
+// ============================================
+
+import { ethers } from 'ethers';
+import { AlphaRouter } from '@uniswap/smart-order-router';
+import { Token, CurrencyAmount, TradeType } from '@uniswap/sdk-core';
+
+const POLYGON_RPC = process.env.POLYGON_RPC || 'https://polygon-rpc.com';
+const provider = new ethers.JsonRpcProvider(POLYGON_RPC);
+const router = new AlphaRouter({ chainId: 137, provider });
+
+const POL = new Token(137, '0x0000000000000000000000000000000000001010', 18, 'POL', 'Polygon');
+const WETH = new Token(137, '0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619', 18, 'WETH', 'Wrapped Ether');
+const USDT = new Token(137, '0xc2132D05D31c914a87C6611C10748AEb04B58e8F', 6, 'USDT', 'Tether USD');
+const NOVA = new Token(137, '0x6bB838eb66BD035149019083fc6Cc84Ea327Eb99', 18, 'NOVA', 'NOVA Token');
+
+/**
+ * GET /swap/quote
+ * 쿼리: tokenIn, tokenOut, amountIn, slippage
+ */
+app.get('/swap/quote', async (req, res) => {
+  try {
+    const { tokenIn, tokenOut, amountIn, slippage = '0.5' } = req.query;
+    
+    if (!tokenIn || !tokenOut || !amountIn) {
+      return res.status(400).json({ 
+        error: 'missing_parameters',
+        required: ['tokenIn', 'tokenOut', 'amountIn']
+      });
+    }
+
+    console.log(`[SWAP QUOTE] ${tokenIn} → ${tokenOut}`);
+
+    // NOVA 거래쌍 감지
+    if (tokenIn.toLowerCase() === NOVA.address.toLowerCase() || 
+        tokenOut.toLowerCase() === NOVA.address.toLowerCase()) {
+      console.log('[SWAP QUOTE] NOVA 커스텀 컨트랙트');
+      return res.json({
+        route: 'NOVA_CUSTOM_CONTRACT',
+        tokenIn,
+        tokenOut,
+        message: 'NOVA는 커스텀 컨트랙트를 사용합니다',
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    const amount = CurrencyAmount.fromRawAmount(
+      tokenIn.toLowerCase() === POL.address.toLowerCase() ? POL : USDT,
+      BigInt(amountIn)
+    );
+
+    const route = await router.route(
+      amount,
+      tokenOut.toLowerCase() === POL.address.toLowerCase() ? POL : USDT,
+      TradeType.EXACT_INPUT,
+      {
+        recipient: '0x0000000000000000000000000000000000000000',
+        slippageTolerance: new (await import('@uniswap/sdk-core')).Percent(Math.round(parseFloat(slippage) * 100), 10000),
+        deadline: Math.floor(Date.now() / 1000) + 60 * 20
+      }
+    );
+
+    if (!route || !route.trade) {
+      return res.status(400).json({ error: 'no_route_found' });
+    }
+
+    const outputAmount = route.trade.outputAmount.quotient.toString();
+    const minimumOutput = route.trade.minimumAmountOut.quotient.toString();
+    const priceImpact = parseFloat(route.trade.priceImpact.toSignificant(4)) * 100;
+
+    res.json({
+      route: 'UNISWAP_V3',
+      amountOut: outputAmount,
+      minimumAmountOut: minimumOutput,
+      priceImpact,
+      executionPrice: route.trade.executionPrice.toSignificant(6),
+      bestPath: route.route.map(r => r.tokenPath.map(t => t.symbol).join('→')).join(' + '),
+      timestamp: new Date().toISOString()
+    });
+  } catch (e) {
+    console.error('[SWAP QUOTE ERROR]', e.message);
+    res.status(500).json({ error: 'quote_failed', details: e.message });
+  }
+});
+
+/**
+ * POST /swap/execute
+ * 바디: tokenIn, tokenOut, amountIn, slippage, userAddress
+ */
+app.post('/swap/execute', async (req, res) => {
+  try {
+    const { tokenIn, tokenOut, amountIn, slippage = 0.5, userAddress } = req.body;
+    
+    if (!tokenIn || !tokenOut || !amountIn || !userAddress) {
+      return res.status(400).json({ 
+        error: 'missing_parameters',
+        required: ['tokenIn', 'tokenOut', 'amountIn', 'userAddress']
+      });
+    }
+
+    console.log(`[SWAP EXECUTE] ${tokenIn} → ${tokenOut}, user: ${userAddress}`);
+
+    // NOVA 거래쌍 감지
+    if (tokenIn.toLowerCase() === NOVA.address.toLowerCase() || 
+        tokenOut.toLowerCase() === NOVA.address.toLowerCase()) {
+      console.log('[SWAP EXECUTE] NOVA 커스텀 컨트랙트');
+      return res.json({
+        route: 'NOVA_CUSTOM_CONTRACT',
+        status: 'custom_contract_required',
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    const amount = CurrencyAmount.fromRawAmount(
+      tokenIn.toLowerCase() === POL.address.toLowerCase() ? POL : USDT,
+      BigInt(amountIn)
+    );
+
+    const route = await router.route(
+      amount,
+      tokenOut.toLowerCase() === POL.address.toLowerCase() ? POL : USDT,
+      TradeType.EXACT_INPUT,
+      {
+        recipient: userAddress,
+        slippageTolerance: new (await import('@uniswap/sdk-core')).Percent(Math.round(slippage * 100), 10000),
+        deadline: Math.floor(Date.now() / 1000) + 60 * 20
+      }
+    );
+
+    if (!route || !route.methodParameters) {
+      return res.status(400).json({ error: 'execution_data_generation_failed' });
+    }
+
+    res.json({
+      route: 'UNISWAP_V3',
+      status: 'ready_to_sign',
+      txData: {
+        to: route.methodParameters.to,
+        from: userAddress,
+        data: route.methodParameters.calldata,
+        value: route.methodParameters.value,
+        gasEstimate: route.gasPriceWei ? route.gasPriceWei.toString() : '0'
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (e) {
+    console.error('[SWAP EXECUTE ERROR]', e.message);
+    res.status(500).json({ error: 'execution_failed', details: e.message });
+  }
 });
