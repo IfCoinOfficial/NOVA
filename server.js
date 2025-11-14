@@ -355,9 +355,29 @@ const router = new AlphaRouter({
 
 });
 
-// QuoterV2 (멀티홉 지원)
+// QuoterV2 (멀티홉 지원) - fs로 JSON 로드 (Node 25 호환)
 
-import QuoterABI from "@uniswap/v3-periphery/artifacts/contracts/lens/QuoterV2.sol/QuoterV2.json" assert { type: "json" };
+import fs from "fs";
+
+import pathModule from "path";
+
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+
+const __dirname = pathModule.dirname(__filename);
+
+const QuoterABI = JSON.parse(
+
+  fs.readFileSync(
+
+    pathModule.join(__dirname, "node_modules/@uniswap/v3-periphery/artifacts/contracts/lens/QuoterV2.sol/QuoterV2.json"),
+
+    "utf8"
+
+  )
+
+);
 
 const QUOTER_V2 = "0x61fFE014bA1793bC6C236E6bF60A4e37fE404E38";
 
