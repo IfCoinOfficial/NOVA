@@ -296,8 +296,9 @@ setTimeout(async () => {
 // ============================================
 
 import { ethers } from 'ethers';
+import JSBI from 'jsbi';
 import { AlphaRouter } from '@uniswap/smart-order-router';
-import { Token, CurrencyAmount, TradeType } from '@uniswap/sdk-core';
+import { Token, CurrencyAmount, TradeType, Percent } from '@uniswap/sdk-core';
 
 const POLYGON_RPC = process.env.POLYGON_RPC || 'https://polygon-rpc.com';
 const provider = new ethers.providers.JsonRpcProvider(POLYGON_RPC);
@@ -331,6 +332,7 @@ async function getTokenByAddress(addr) {
   // 1️⃣ 알려진 토큰이면 즉시 반환
   if (KNOWN_TOKENS[a]) {
     const info = KNOWN_TOKENS[a];
+    console.log(`[TOKEN CACHE] ${info.symbol} (${a.slice(0, 6)}...)`);
     return new Token(137, a, info.decimals, info.symbol, info.name);
   }
   
@@ -338,8 +340,8 @@ async function getTokenByAddress(addr) {
   try {
     const contract = new ethers.Contract(a, ERC20_ABI, provider);
     const decimals = await contract.decimals();
-    console.log(`[TOKEN INFO] ${a}: decimals=${decimals}`);
-    return new Token(137, a, decimals, `TOKEN_${a.slice(0, 6)}`, 'Token');
+    console.log(`[TOKEN DYNAMIC] ${a.slice(0, 10)}... decimals=${decimals}`);
+    return new Token(137, a, decimals, `TOKEN_${a.slice(2, 8)}`, 'Token');
   } catch (e) {
     throw new Error(`Failed to fetch token info for ${a}: ${e.message}`);
   }
@@ -410,7 +412,10 @@ app.get('/swap/quote', async (req, res) => {
       TradeType.EXACT_INPUT,
       {
         recipient: '0x0000000000000000000000000000000000000000',
-        slippageTolerance: new (await import('@uniswap/sdk-core')).Percent(Math.round(parseFloat(slippage) * 100), 10000),
+        slippageTolerance: new Percent(
+          JSBI.BigInt(Math.round(parseFloat(slippage) * 100)),
+          JSBI.BigInt(10000)
+        ),
         deadline: Math.floor(Date.now() / 1000) + 60 * 20
       }
     );
@@ -501,7 +506,10 @@ app.post('/swap/execute', async (req, res) => {
       TradeType.EXACT_INPUT,
       {
         recipient: userAddress,
-        slippageTolerance: new (await import('@uniswap/sdk-core')).Percent(Math.round(slippage * 100), 10000),
+        slippageTolerance: new Percent(
+          JSBI.BigInt(Math.round(slippage * 100)),
+          JSBI.BigInt(10000)
+        ),
         deadline: Math.floor(Date.now() / 1000) + 60 * 20
       }
     );
