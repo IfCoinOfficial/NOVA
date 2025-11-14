@@ -357,17 +357,21 @@ const router = new AlphaRouter({
 
 // QuoterV2 (멀티홉 지원) - fs로 JSON 로드 (Node 25 호환)
 
-const QuoterABI = JSON.parse(
+let QuoterABI;
 
-  fs.readFileSync(
+try {
 
-    path.join(__dirname, "node_modules/@uniswap/v3-periphery/artifacts/contracts/lens/QuoterV2.sol/QuoterV2.json"),
+  const quoterPath = path.join(process.cwd(), "node_modules/@uniswap/v3-periphery/artifacts/contracts/lens/QuoterV2.sol/QuoterV2.json");
 
-    "utf8"
+  QuoterABI = JSON.parse(fs.readFileSync(quoterPath, "utf8"));
 
-  )
+} catch (error) {
 
-);
+  console.error("QuoterV2 ABI 로드 실패:", error.message);
+
+  QuoterABI = { abi: [] };
+
+}
 
 const QUOTER_V2 = "0x61fFE014bA1793bC6C236E6bF60A4e37fE404E38";
 
