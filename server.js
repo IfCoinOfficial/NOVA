@@ -425,17 +425,42 @@ app.get('/swap/quote', async (req, res) => {
       return res.status(400).json({ error: 'no_route_found' });
     }
 
-    const outputAmount = route.trade.outputAmount.quotient.toString();
-    const minimumOutput = route.trade.minimumAmountOut.quotient.toString();
-    const priceImpact = parseFloat(route.trade.priceImpact.toSignificant(4)) * 100;
+    // 🔥 모든 필드 안전 체크 (undefined 방지)
+    let outputAmount = '0';
+    let minimumOutput = '0';
+    let priceImpact = 0;
+    let executionPrice = '0';
+    let bestPath = 'unknown';
+
+    try {
+      if (route.trade.outputAmount) {
+        outputAmount = route.trade.outputAmount.quotient.toString();
+      }
+      if (route.trade.minimumAmountOut) {
+        minimumOutput = route.trade.minimumAmountOut.quotient.toString();
+      }
+      if (route.trade.priceImpact) {
+        priceImpact = parseFloat(route.trade.priceImpact.toSignificant(4)) * 100;
+      }
+      if (route.trade.executionPrice) {
+        executionPrice = route.trade.executionPrice.toSignificant(6);
+      }
+      if (route.route && route.route.length > 0) {
+        bestPath = route.route
+          .map(r => r.tokenPath.map(t => t.symbol).join('→'))
+          .join(' + ');
+      }
+    } catch (e) {
+      console.log('⚠️ [SWAP QUOTE] route parsing error:', e.message);
+    }
 
     res.json({
       route: 'UNISWAP_V3',
       amountOut: outputAmount,
-      minimumAmountOut: minimumOutput,
+      minimumAmountOut,
       priceImpact,
-      executionPrice: route.trade.executionPrice.toSignificant(6),
-      bestPath: route.route.map(r => r.tokenPath.map(t => t.symbol).join('→')).join(' + '),
+      executionPrice,
+      bestPath,
       timestamp: new Date().toISOString()
     });
   } catch (e) {
