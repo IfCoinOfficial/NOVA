@@ -357,8 +357,6 @@ const router = new AlphaRouter({
 
 // QuoterV2 (멀티홉 지원) - fs로 JSON 로드 (Node 25 호환)
 
-import fs from "fs";
-
 import pathModule from "path";
 
 import { fileURLToPath } from "url";
