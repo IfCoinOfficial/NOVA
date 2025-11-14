@@ -26,8 +26,8 @@ const DEFAULT_PRICES_USD = {
   cores: {
     boost: {
       0: 5, 1: 8, 2: 10, 3: 12, 4: 14, 5: 16, 6: 18, 7: 21, 8: 24, 9: 27,
-      10: 30, 11: 35, 12: 40, 13: 45, 14: 50, 15: 60, 16: 70, 17: 80, 18: 90, 19: 100,
-      20: 120, 21: 150, 22: 180, 23: 210, 24: 250, 25: 300, 26: 350, 27: 400, 28: 450, 29: 500
+      10: 30, 11: 35, 12: 40, 13: 45, 14: 50, 15: 60, 16: 65, 17: 70, 18: 75, 19: 80,
+      20: 85, 21: 90, 22: 95, 23: 100, 24: 110, 25: 120, 26: 130, 27: 140, 28: 150, 29: 200
     },
     nft: 5,
     point: 20
@@ -270,6 +270,27 @@ process.on('unhandledRejection', (reason, promise) => {
   console.error('Unhandled Rejection:', reason);
 });
 
+// 🔄 서버 시작 1초 후 POL → USDT 시세 자동 조회
+setTimeout(async () => {
+  try {
+    console.log('\n🔍 [STARTUP] POL → USDT 시세 자동 조회 중...\n');
+    
+    const baseUrl = `http://localhost:${PORT}`;
+    const response = await axios.get(`${baseUrl}/swap/quote?tokenIn=0x0000000000000000000000000000000000001010&tokenOut=0xc2132d05d31c914a87c6611c10748aeb04b58e8f&amountIn=1000000000000000000&slippage=0.5`);
+    
+    if (response.data.route === 'UNISWAP_V3' && response.data.amountOut) {
+      const usdtAmount = (BigInt(response.data.amountOut) / BigInt(1000000)).toString();
+      console.log(`💰 [PRICE] 1 POL = ${usdtAmount} USDT`);
+      console.log(`📊 가격 영향: ${response.data.priceImpact.toFixed(2)}%`);
+      console.log(`🛣️  경로: ${response.data.bestPath}\n`);
+    } else {
+      console.log('⚠️  가격 조회 실패\n');
+    }
+  } catch (e) {
+    console.log(`⚠️  시작 가격 조회 오류: ${e.message}\n`);
+  }
+}, 1000);
+
 // ============================================
 // 🔄 Uniswap 스왑 API 추가 (아래에 덧붙임)
 // ============================================
@@ -281,6 +302,11 @@ import { Token, CurrencyAmount, TradeType } from '@uniswap/sdk-core';
 const POLYGON_RPC = process.env.POLYGON_RPC || 'https://polygon-rpc.com';
 const provider = new ethers.providers.JsonRpcProvider(POLYGON_RPC);
 const router = new AlphaRouter({ chainId: 137, provider });
+
+// 🔥 NOVA 주소 (커스텀 라우팅용)
+const NOVA = {
+  address: '0x6bB838eb66BD035149019083fc6Cc84Ea327Eb99'.toLowerCase()
+};
 
 // 🔥 사전 정의된 주요 토큰들 (나머지는 동적 조회)
 const KNOWN_TOKENS = {
