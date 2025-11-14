@@ -13,9 +13,9 @@
     "cors": "^2.8.5",
     "axios": "^1.6.2",
     "ethers": "^6.7.1",
-    "@uniswap/smart-order-router": "^3.26.0",
-    "@uniswap/universal-router-sdk": "^1.6.2",
-    "@uniswap/sdk-core": "^4.0.1"
+    "@uniswap/smart-order-router": "^2.10.0",
+    "@uniswap/sdk-core": "^3.2.18",
+    "@uniswap/v3-sdk": "^3.9.193"
   },
   "engines": {
     "node": ">=16.0.0"
