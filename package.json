@@ -2,7 +2,7 @@
   "name": "nova-prices-server",
   "version": "1.0.0",
   "type": "module",
-  "description": "NOVA 가격 프록시 서버",
+  "description": "NOVA 가격 프록시 + Uniswap 스왑 서버",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -11,7 +11,11 @@
   "dependencies": {
     "express": "^4.18.2",
     "cors": "^2.8.5",
-    "axios": "^1.6.2"
+    "axios": "^1.6.2",
+    "ethers": "^6.7.1",
+    "@uniswap/smart-order-router": "^3.26.0",
+    "@uniswap/universal-router-sdk": "^1.6.2",
+    "@uniswap/sdk-core": "^4.0.1"
   },
   "engines": {
     "node": ">=16.0.0"
