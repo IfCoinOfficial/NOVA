@@ -22,7 +22,7 @@ const POL_CACHE_DURATION = 30 * 60 * 1000;
 const NOVA_PRICE = 0.00007;
 
 const DEFAULT_PRICES_USD = {
-  passes: { basic: 50, premium: 150, ultimate: 300 },
+  passes: { basic: 8, premium: 15, ultimate: 22 },
   cores: {
     boost: {
       0: 5, 1: 8, 2: 10, 3: 12, 4: 14, 5: 16, 6: 18, 7: 21, 8: 24, 9: 27,
