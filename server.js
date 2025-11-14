@@ -317,15 +317,9 @@ import { ethers } from "ethers";
 
 import JSBI from "jsbi";
 
-import {
+import sorPkg from "@uniswap/smart-order-router";
 
-  AlphaRouter,
-
-  ChainId,
-
-  SwapType,
-
-} from "@uniswap/smart-order-router";
+const { AlphaRouter, ChainId, SwapType } = sorPkg;
 
 import {
 
