@@ -377,11 +377,11 @@ app.get('/swap/quote', async (req, res) => {
       });
     }
 
-    // ✅ 공백 제거 및 BigInt 변환
+    // ✅ 공백 제거 및 JSBI.BigInt 변환 (Uniswap SDK-core는 JSBI만 허용)
     let amountInBigInt;
     try {
       const cleanedAmount = amountIn.trim();
-      amountInBigInt = BigInt(cleanedAmount);
+      amountInBigInt = JSBI.BigInt(cleanedAmount);
     } catch (e) {
       return res.status(400).json({ 
         error: 'invalid_amount',
@@ -472,11 +472,11 @@ app.post('/swap/execute', async (req, res) => {
       });
     }
 
-    // ✅ 공백 제거 및 BigInt 변환
+    // ✅ 공백 제거 및 JSBI.BigInt 변환 (Uniswap SDK-core는 JSBI만 허용)
     let amountInBigInt;
     try {
       const cleanedAmount = amountIn.toString().trim();
-      amountInBigInt = BigInt(cleanedAmount);
+      amountInBigInt = JSBI.BigInt(cleanedAmount);
     } catch (e) {
       return res.status(400).json({ 
         error: 'invalid_amount',
