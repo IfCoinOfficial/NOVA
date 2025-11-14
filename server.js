@@ -425,7 +425,7 @@ app.get('/swap/quote', async (req, res) => {
       return res.status(400).json({ error: 'no_route_found' });
     }
 
-    // 🔥 모든 필드 안전 체크 (undefined 방지)
+    // 🔥 모든 필드 안전 체크 + 멀티홉/단일홉 대응
     let outputAmount = '0';
     let minimumOutput = '0';
     let priceImpact = 0;
@@ -433,25 +433,35 @@ app.get('/swap/quote', async (req, res) => {
     let bestPath = 'unknown';
 
     try {
-      if (route.trade.outputAmount) {
+      if (route.trade?.outputAmount) {
         outputAmount = route.trade.outputAmount.quotient.toString();
       }
-      if (route.trade.minimumAmountOut) {
+      if (route.trade?.minimumAmountOut) {
         minimumOutput = route.trade.minimumAmountOut.quotient.toString();
       }
-      if (route.trade.priceImpact) {
+      if (route.trade?.priceImpact) {
         priceImpact = parseFloat(route.trade.priceImpact.toSignificant(4)) * 100;
+      } else {
+        priceImpact = 0;
       }
-      if (route.trade.executionPrice) {
+      if (route.trade?.executionPrice) {
         executionPrice = route.trade.executionPrice.toSignificant(6);
       }
-      if (route.route && route.route.length > 0) {
+
+      // 👉 멀티홉 / 단일홉 완전 대응
+      if (route.route && Array.isArray(route.route)) {
         bestPath = route.route
           .map(r => r.tokenPath.map(t => t.symbol).join('→'))
           .join(' + ');
+      } else if (route.trade?.swaps?.[0]?.route?.path) {
+        bestPath = route.trade.swaps[0].route.path
+          .map(t => t.symbol)
+          .join('→');
+      } else {
+        bestPath = 'SINGLE_HOP';
       }
     } catch (e) {
-      console.log('⚠️ [SWAP QUOTE] route parsing error:', e.message);
+      console.log('⚠️ [bestPath parse error]', e.message);
     }
 
     res.json({
