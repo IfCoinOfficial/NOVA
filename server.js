@@ -282,10 +282,42 @@ const POLYGON_RPC = process.env.POLYGON_RPC || 'https://polygon-rpc.com';
 const provider = new ethers.providers.JsonRpcProvider(POLYGON_RPC);
 const router = new AlphaRouter({ chainId: 137, provider });
 
-const POL = new Token(137, '0x0000000000000000000000000000000000001010', 18, 'POL', 'Polygon');
-const WETH = new Token(137, '0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619', 18, 'WETH', 'Wrapped Ether');
-const USDT = new Token(137, '0xc2132D05D31c914a87C6611C10748AEb04B58e8F', 6, 'USDT', 'Tether USD');
-const NOVA = new Token(137, '0x6bB838eb66BD035149019083fc6Cc84Ea327Eb99', 18, 'NOVA', 'NOVA Token');
+// 🔥 사전 정의된 주요 토큰들 (나머지는 동적 조회)
+const KNOWN_TOKENS = {
+  '0x0000000000000000000000000000000000001010': { symbol: 'POL', decimals: 18, name: 'Polygon' },
+  '0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619': { symbol: 'WETH', decimals: 18, name: 'Wrapped Ether' },
+  '0xc2132D05D31c914a87C6611C10748AEb04B58e8F': { symbol: 'USDT', decimals: 6, name: 'Tether USD' },
+  '0x6bB838eb66BD035149019083fc6Cc84Ea327Eb99': { symbol: 'NOVA', decimals: 18, name: 'NOVA Token' }
+};
+
+// ERC20 ABI (decimals 조회용)
+const ERC20_ABI = [
+  'function decimals() public view returns (uint8)'
+];
+
+/**
+ * 토큰 주소로 Token 객체 반환 (동적 조회)
+ * ✅ 알려진 토큰은 즉시 반환, 미지의 토큰은 RPC로 decimals 조회
+ */
+async function getTokenByAddress(addr) {
+  const a = addr.toLowerCase();
+  
+  // 1️⃣ 알려진 토큰이면 즉시 반환
+  if (KNOWN_TOKENS[a]) {
+    const info = KNOWN_TOKENS[a];
+    return new Token(137, a, info.decimals, info.symbol, info.name);
+  }
+  
+  // 2️⃣ 미지의 토큰: RPC로 decimals 동적 조회
+  try {
+    const contract = new ethers.Contract(a, ERC20_ABI, provider);
+    const decimals = await contract.decimals();
+    console.log(`[TOKEN INFO] ${a}: decimals=${decimals}`);
+    return new Token(137, a, decimals, `TOKEN_${a.slice(0, 6)}`, 'Token');
+  } catch (e) {
+    throw new Error(`Failed to fetch token info for ${a}: ${e.message}`);
+  }
+}
 
 /**
  * GET /swap/quote
@@ -317,24 +349,38 @@ app.get('/swap/quote', async (req, res) => {
       });
     }
 
+    // ✅ 공백 제거 및 BigInt 변환
     let amountInBigInt;
     try {
-      amountInBigInt = BigInt(amountIn);
+      const cleanedAmount = amountIn.trim();
+      amountInBigInt = BigInt(cleanedAmount);
     } catch (e) {
       return res.status(400).json({ 
         error: 'invalid_amount',
-        details: `amountIn must be a valid BigInt string: ${e.message}`
+        details: `amountIn must be a valid integer string: ${e.message}`
+      });
+    }
+
+    // ✅ 토큰 주소로 정확한 Token 객체 매칭 (동적 조회)
+    let tokenInObj, tokenOutObj;
+    try {
+      tokenInObj = await getTokenByAddress(tokenIn);
+      tokenOutObj = await getTokenByAddress(tokenOut);
+    } catch (e) {
+      return res.status(400).json({ 
+        error: 'invalid_token',
+        details: e.message
       });
     }
 
     const amount = CurrencyAmount.fromRawAmount(
-      tokenIn.toLowerCase() === POL.address.toLowerCase() ? POL : USDT,
+      tokenInObj,
       amountInBigInt
     );
 
     const route = await router.route(
       amount,
-      tokenOut.toLowerCase() === POL.address.toLowerCase() ? POL : USDT,
+      tokenOutObj,
       TradeType.EXACT_INPUT,
       {
         recipient: '0x0000000000000000000000000000000000000000',
@@ -394,24 +440,38 @@ app.post('/swap/execute', async (req, res) => {
       });
     }
 
+    // ✅ 공백 제거 및 BigInt 변환
     let amountInBigInt;
     try {
-      amountInBigInt = BigInt(amountIn);
+      const cleanedAmount = amountIn.toString().trim();
+      amountInBigInt = BigInt(cleanedAmount);
     } catch (e) {
       return res.status(400).json({ 
         error: 'invalid_amount',
-        details: `amountIn must be a valid BigInt string: ${e.message}`
+        details: `amountIn must be a valid integer string: ${e.message}`
+      });
+    }
+
+    // ✅ 토큰 주소로 정확한 Token 객체 매칭 (동적 조회)
+    let tokenInObj, tokenOutObj;
+    try {
+      tokenInObj = await getTokenByAddress(tokenIn);
+      tokenOutObj = await getTokenByAddress(tokenOut);
+    } catch (e) {
+      return res.status(400).json({ 
+        error: 'invalid_token',
+        details: e.message
       });
     }
 
     const amount = CurrencyAmount.fromRawAmount(
-      tokenIn.toLowerCase() === POL.address.toLowerCase() ? POL : USDT,
+      tokenInObj,
       amountInBigInt
     );
 
     const route = await router.route(
       amount,
-      tokenOut.toLowerCase() === POL.address.toLowerCase() ? POL : USDT,
+      tokenOutObj,
       TradeType.EXACT_INPUT,
       {
         recipient: userAddress,
