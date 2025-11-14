@@ -279,7 +279,7 @@ import { AlphaRouter } from '@uniswap/smart-order-router';
 import { Token, CurrencyAmount, TradeType } from '@uniswap/sdk-core';
 
 const POLYGON_RPC = process.env.POLYGON_RPC || 'https://polygon-rpc.com';
-const provider = new ethers.JsonRpcProvider(POLYGON_RPC);
+const provider = new ethers.providers.JsonRpcProvider(POLYGON_RPC);
 const router = new AlphaRouter({ chainId: 137, provider });
 
 const POL = new Token(137, '0x0000000000000000000000000000000000001010', 18, 'POL', 'Polygon');
