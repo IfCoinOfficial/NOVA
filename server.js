@@ -274,302 +274,494 @@ process.on('unhandledRejection', (reason, promise) => {
 setTimeout(async () => {
   try {
     console.log('\n🔍 [STARTUP] POL → USDT 시세 자동 조회 중...\n');
-    
-    const baseUrl = `http://localhost:${PORT}`;
-    const response = await axios.get(`${baseUrl}/swap/quote?tokenIn=0x0000000000000000000000000000000000001010&tokenOut=0xc2132d05d31c914a87c6611c10748aeb04b58e8f&amountIn=1000000000000000000&slippage=0.5`);
-    
+
+    const baseUrl = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
+
+    const response = await axios.get(
+
+      `${baseUrl}/swap/quote?tokenIn=0x0000000000000000000000000000000000001010&tokenOut=0xc2132d05d31c914a87c6611c10748aeb04b58e8f&amountIn=1000000000000000000&slippage=0.5`
+
+    );
+
     if (response.data.route === 'UNISWAP_V3' && response.data.amountOut) {
-      const usdtAmount = (BigInt(response.data.amountOut) / BigInt(1000000)).toString();
+
+      const usdtAmount = (BigInt(response.data.amountOut) / BigInt(1_000_000)).toString();
+
       console.log(`💰 [PRICE] 1 POL = ${usdtAmount} USDT`);
-      console.log(`📊 가격 영향: ${response.data.priceImpact.toFixed(2)}%`);
+
+      console.log(`📊 가격 영향: ${response.data.priceImpact}%`);
+
       console.log(`🛣️  경로: ${response.data.bestPath}\n`);
+
     } else {
+
       console.log('⚠️  가격 조회 실패\n');
+
     }
+
   } catch (e) {
+
     console.log(`⚠️  시작 가격 조회 오류: ${e.message}\n`);
+
   }
+
 }, 1000);
 
-// ============================================
-// 🔄 Uniswap 스왑 API 추가 (아래에 덧붙임)
-// ============================================
+// ===============================================================
 
-import { ethers } from 'ethers';
-import JSBI from 'jsbi';
-import { AlphaRouter } from '@uniswap/smart-order-router';
-import { Token, CurrencyAmount, TradeType, Percent } from '@uniswap/sdk-core';
+// 🔄 Uniswap 스왑 API (QuoterV2 + AlphaRouter 통합 안정화 버전)
 
-const POLYGON_RPC = process.env.POLYGON_RPC || 'https://polygon-rpc.com';
+// ===============================================================
+
+import { ethers } from "ethers";
+
+import JSBI from "jsbi";
+
+import {
+
+  AlphaRouter,
+
+  ChainId,
+
+  SwapType,
+
+} from "@uniswap/smart-order-router";
+
+import {
+
+  Token,
+
+  CurrencyAmount,
+
+  TradeType,
+
+  Percent,
+
+} from "@uniswap/sdk-core";
+
+// POLYGON RPC
+
+const POLYGON_RPC = process.env.POLYGON_RPC_URL || "https://polygon-rpc.com";
+
 const provider = new ethers.providers.JsonRpcProvider(POLYGON_RPC);
-const router = new AlphaRouter({ chainId: 137, provider });
 
-// 🔥 NOVA 주소 (커스텀 라우팅용)
-const NOVA = {
-  address: '0x6bB838eb66BD035149019083fc6Cc84Ea327Eb99'.toLowerCase()
-};
+// 라우터 생성
 
-// 🔥 사전 정의된 주요 토큰들 (나머지는 동적 조회)
-const KNOWN_TOKENS = {
-  '0x0000000000000000000000000000000000001010': { symbol: 'POL', decimals: 18, name: 'Polygon' },
-  '0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619': { symbol: 'WETH', decimals: 18, name: 'Wrapped Ether' },
-  '0xc2132D05D31c914a87C6611C10748AEb04B58e8F': { symbol: 'USDT', decimals: 6, name: 'Tether USD' },
-  '0x6bB838eb66BD035149019083fc6Cc84Ea327Eb99': { symbol: 'NOVA', decimals: 18, name: 'NOVA Token' }
-};
+const router = new AlphaRouter({
 
-// ERC20 ABI (decimals 조회용)
-const ERC20_ABI = [
-  'function decimals() public view returns (uint8)'
-];
+  chainId: 137,
 
-/**
- * 토큰 주소로 Token 객체 반환 (동적 조회)
- * ✅ 알려진 토큰은 즉시 반환, 미지의 토큰은 RPC로 decimals 조회
- */
-async function getTokenByAddress(addr) {
-  const a = addr.toLowerCase();
-  
-  // 1️⃣ 알려진 토큰이면 즉시 반환
-  if (KNOWN_TOKENS[a]) {
-    const info = KNOWN_TOKENS[a];
-    console.log(`[TOKEN CACHE] ${info.symbol} (${a.slice(0, 6)}...)`);
-    return new Token(137, a, info.decimals, info.symbol, info.name);
-  }
-  
-  // 2️⃣ 미지의 토큰: RPC로 decimals 동적 조회
-  try {
-    const contract = new ethers.Contract(a, ERC20_ABI, provider);
-    const decimals = await contract.decimals();
-    console.log(`[TOKEN DYNAMIC] ${a.slice(0, 10)}... decimals=${decimals}`);
-    return new Token(137, a, decimals, `TOKEN_${a.slice(2, 8)}`, 'Token');
-  } catch (e) {
-    throw new Error(`Failed to fetch token info for ${a}: ${e.message}`);
-  }
-}
+  provider,
 
-/**
- * GET /swap/quote
- * 쿼리: tokenIn, tokenOut, amountIn, slippage
- */
-app.get('/swap/quote', async (req, res) => {
-  try {
-    const { tokenIn, tokenOut, amountIn, slippage = '0.5' } = req.query;
-    
-    if (!tokenIn || !tokenOut || !amountIn) {
-      return res.status(400).json({ 
-        error: 'missing_parameters',
-        required: ['tokenIn', 'tokenOut', 'amountIn']
-      });
-    }
-
-    console.log(`[SWAP QUOTE] ${tokenIn} → ${tokenOut}, amount: ${amountIn}`);
-
-    // NOVA 거래쌍 감지
-    if (tokenIn.toLowerCase() === NOVA.address.toLowerCase() || 
-        tokenOut.toLowerCase() === NOVA.address.toLowerCase()) {
-      console.log('[SWAP QUOTE] NOVA 커스텀 컨트랙트');
-      return res.json({
-        route: 'NOVA_CUSTOM_CONTRACT',
-        tokenIn,
-        tokenOut,
-        message: 'NOVA는 커스텀 컨트랙트를 사용합니다',
-        timestamp: new Date().toISOString()
-      });
-    }
-
-    // ✅ 공백 제거 및 JSBI.BigInt 변환 (Uniswap SDK-core는 JSBI만 허용)
-    let amountInBigInt;
-    try {
-      const cleanedAmount = amountIn.trim();
-      amountInBigInt = JSBI.BigInt(cleanedAmount);
-    } catch (e) {
-      return res.status(400).json({ 
-        error: 'invalid_amount',
-        details: `amountIn must be a valid integer string: ${e.message}`
-      });
-    }
-
-    // ✅ 토큰 주소로 정확한 Token 객체 매칭 (동적 조회)
-    let tokenInObj, tokenOutObj;
-    try {
-      tokenInObj = await getTokenByAddress(tokenIn);
-      tokenOutObj = await getTokenByAddress(tokenOut);
-    } catch (e) {
-      return res.status(400).json({ 
-        error: 'invalid_token',
-        details: e.message
-      });
-    }
-
-    // ✅ JSBI.BigInt로 변환 (Uniswap SDK-core는 JSBI만 허용)
-    const amount = CurrencyAmount.fromRawAmount(
-      tokenInObj,
-      JSBI.BigInt(amountInBigInt.toString())
-    );
-
-    const route = await router.route(
-      amount,
-      tokenOutObj,
-      TradeType.EXACT_INPUT,
-      {
-        recipient: '0x0000000000000000000000000000000000000000',
-        slippageTolerance: new Percent(
-          JSBI.BigInt(Math.round(parseFloat(slippage) * 100)),
-          JSBI.BigInt(10000)
-        ),
-        deadline: Math.floor(Date.now() / 1000) + 60 * 20
-      }
-    );
-
-    if (!route || !route.trade) {
-      return res.status(400).json({ error: 'no_route_found' });
-    }
-
-    // 🔥 모든 필드 안전 체크 + 멀티홉/단일홉 대응
-    let outputAmount = '0';
-    let minimumOutput = '0';
-    let priceImpact = 0;
-    let executionPrice = '0';
-    let bestPath = 'unknown';
-
-    try {
-      if (route.trade?.outputAmount) {
-        outputAmount = route.trade.outputAmount.quotient.toString();
-      }
-      if (route.trade?.minimumAmountOut) {
-        minimumOutput = route.trade.minimumAmountOut.quotient.toString();
-      }
-      if (route.trade?.priceImpact) {
-        priceImpact = parseFloat(route.trade.priceImpact.toSignificant(4)) * 100;
-      } else {
-        priceImpact = 0;
-      }
-      if (route.trade?.executionPrice) {
-        executionPrice = route.trade.executionPrice.toSignificant(6);
-      }
-
-      // 👉 멀티홉 / 단일홉 완전 대응
-      if (route.route && Array.isArray(route.route)) {
-        bestPath = route.route
-          .map(r => r.tokenPath.map(t => t.symbol).join('→'))
-          .join(' + ');
-      } else if (route.trade?.swaps?.[0]?.route?.path) {
-        bestPath = route.trade.swaps[0].route.path
-          .map(t => t.symbol)
-          .join('→');
-      } else {
-        bestPath = 'SINGLE_HOP';
-      }
-    } catch (e) {
-      console.log('⚠️ [bestPath parse error]', e.message);
-    }
-
-    res.json({
-      route: 'UNISWAP_V3',
-      amountOut: outputAmount,
-      minimumAmountOut,
-      priceImpact,
-      executionPrice,
-      bestPath,
-      timestamp: new Date().toISOString()
-    });
-  } catch (e) {
-    console.error('[SWAP QUOTE ERROR]', e.message);
-    res.status(500).json({ error: 'quote_failed', details: e.message });
-  }
 });
 
-/**
- * POST /swap/execute
- * 바디: tokenIn, tokenOut, amountIn, slippage, userAddress
- */
-app.post('/swap/execute', async (req, res) => {
-  try {
-    const { tokenIn, tokenOut, amountIn, slippage = 0.5, userAddress } = req.body;
-    
-    if (!tokenIn || !tokenOut || !amountIn || !userAddress) {
-      return res.status(400).json({ 
-        error: 'missing_parameters',
-        required: ['tokenIn', 'tokenOut', 'amountIn', 'userAddress']
-      });
-    }
+// QuoterV2 (멀티홉 지원)
 
-    console.log(`[SWAP EXECUTE] ${tokenIn} → ${tokenOut}, user: ${userAddress}`);
+import QuoterABI from "@uniswap/v3-periphery/artifacts/contracts/lens/QuoterV2.sol/QuoterV2.json";
 
-    // NOVA 거래쌍 감지
-    if (tokenIn.toLowerCase() === NOVA.address.toLowerCase() || 
-        tokenOut.toLowerCase() === NOVA.address.toLowerCase()) {
-      console.log('[SWAP EXECUTE] NOVA 커스텀 컨트랙트');
-      return res.json({
-        route: 'NOVA_CUSTOM_CONTRACT',
-        status: 'custom_contract_required',
-        timestamp: new Date().toISOString()
-      });
-    }
+const QUOTER_V2 = "0x61fFE014bA1793bC6C236E6bF60A4e37fE404E38";
 
-    // ✅ 공백 제거 및 JSBI.BigInt 변환 (Uniswap SDK-core는 JSBI만 허용)
-    let amountInBigInt;
-    try {
-      const cleanedAmount = amountIn.toString().trim();
-      amountInBigInt = JSBI.BigInt(cleanedAmount);
-    } catch (e) {
-      return res.status(400).json({ 
-        error: 'invalid_amount',
-        details: `amountIn must be a valid integer string: ${e.message}`
-      });
-    }
+const quoter = new ethers.Contract(QUOTER_V2, QuoterABI.abi, provider);
 
-    // ✅ 토큰 주소로 정확한 Token 객체 매칭 (동적 조회)
-    let tokenInObj, tokenOutObj;
-    try {
-      tokenInObj = await getTokenByAddress(tokenIn);
-      tokenOutObj = await getTokenByAddress(tokenOut);
-    } catch (e) {
-      return res.status(400).json({ 
-        error: 'invalid_token',
-        details: e.message
-      });
-    }
+// NOVA 주소
 
-    // ✅ JSBI.BigInt로 변환 (Uniswap SDK-core는 JSBI만 허용)
-    const amount = CurrencyAmount.fromRawAmount(
-      tokenInObj,
-      JSBI.BigInt(amountInBigInt.toString())
-    );
+const NOVA = {
 
-    const route = await router.route(
-      amount,
-      tokenOutObj,
-      TradeType.EXACT_INPUT,
-      {
-        recipient: userAddress,
-        slippageTolerance: new Percent(
-          JSBI.BigInt(Math.round(slippage * 100)),
-          JSBI.BigInt(10000)
-        ),
-        deadline: Math.floor(Date.now() / 1000) + 60 * 20
-      }
-    );
+  address: "0x6bB838eb66BD035149019083fc6Cc84Ea327Eb99".toLowerCase(),
 
-    if (!route || !route.methodParameters) {
-      return res.status(400).json({ error: 'execution_data_generation_failed' });
-    }
+};
 
-    res.json({
-      route: 'UNISWAP_V3',
-      status: 'ready_to_sign',
-      txData: {
-        to: route.methodParameters.to,
-        from: userAddress,
-        data: route.methodParameters.calldata,
-        value: route.methodParameters.value,
-        gasEstimate: route.gasPriceWei ? route.gasPriceWei.toString() : '0'
-      },
-      timestamp: new Date().toISOString()
-    });
-  } catch (e) {
-    console.error('[SWAP EXECUTE ERROR]', e.message);
-    res.status(500).json({ error: 'execution_failed', details: e.message });
+// 미리 정의된 토큰 목록
+
+const KNOWN_TOKENS = {
+
+  "0x0000000000000000000000000000000000001010": {
+
+    symbol: "POL",
+
+    decimals: 18,
+
+    name: "Polygon",
+
+  },
+
+  "0xc2132D05D31c914a87C6611C10748AEb04B58e8F": {
+
+    symbol: "USDT",
+
+    decimals: 6,
+
+    name: "Tether USD",
+
+  },
+
+  "0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619": {
+
+    symbol: "WETH",
+
+    decimals: 18,
+
+    name: "Wrapped Ether",
+
+  },
+
+  "0x6bB838eb66BD035149019083fc6Cc84Ea327Eb99": {
+
+    symbol: "NOVA",
+
+    decimals: 18,
+
+    name: "NOVA Token",
+
+  },
+
+};
+
+// decimals 조회용 ABI
+
+const ERC20_ABI = ["function decimals() view returns (uint8)"];
+
+// 동적 토큰 생성
+
+async function getToken(addr) {
+
+  const a = addr.toLowerCase();
+
+  if (KNOWN_TOKENS[a]) {
+
+    const info = KNOWN_TOKENS[a];
+
+    return new Token(137, a, info.decimals, info.symbol, info.name);
+
   }
+
+  try {
+
+    const c = new ethers.Contract(a, ERC20_ABI, provider);
+
+    const decimals = await c.decimals();
+
+    return new Token(137, a, decimals, `TOKEN_${a.slice(2, 8)}`, "Token");
+
+  } catch (e) {
+
+    throw new Error(`Invalid token: ${addr}, ${e.message}`);
+
+  }
+
+}
+
+// ---------------------------------------------------------------
+
+// GET /swap/quote
+
+// ---------------------------------------------------------------
+
+app.get("/swap/quote", async (req, res) => {
+
+  try {
+
+    let { tokenIn, tokenOut, amountIn, slippage = "0.5" } = req.query;
+
+    if (!tokenIn || !tokenOut || !amountIn) {
+
+      return res.status(400).json({
+
+        error: "missing_parameters",
+
+        required: ["tokenIn", "tokenOut", "amountIn"],
+
+      });
+
+    }
+
+    console.log(
+
+      `[SWAP QUOTE] ${tokenIn} → ${tokenOut}, amount: ${amountIn}`
+
+    );
+
+    // NOVA 커스텀 경로 제외
+
+    if (
+
+      tokenIn.toLowerCase() === NOVA.address ||
+
+      tokenOut.toLowerCase() === NOVA.address
+
+    ) {
+
+      return res.json({
+
+        route: "NOVA_CUSTOM_CONTRACT",
+
+        message: "NOVA는 커스텀 라우팅을 사용합니다",
+
+      });
+
+    }
+
+    const amountJSBI = JSBI.BigInt(amountIn.toString());
+
+    const tokenA = await getToken(tokenIn);
+
+    const tokenB = await getToken(tokenOut);
+
+    // ------------------------------
+
+    // 🔥 Step1: AlphaRouter 시도
+
+    // ------------------------------
+
+    const options = {
+
+      recipient: "0x0000000000000000000000000000000000000000",
+
+      slippageTolerance: new Percent(
+
+        JSBI.BigInt(Math.round(parseFloat(slippage) * 100)),
+
+        JSBI.BigInt(10000)
+
+      ),
+
+      deadline: Math.floor(Date.now() / 1000) + 1800,
+
+      type: SwapType.SWAP_ROUTER_02,
+
+    };
+
+    const alphaRoute = await router.route(
+
+      CurrencyAmount.fromRawAmount(tokenA, amountJSBI),
+
+      tokenB,
+
+      TradeType.EXACT_INPUT,
+
+      options
+
+    );
+
+    // AlphaRouter 성공 → 사용
+
+    if (alphaRoute && alphaRoute.trade) {
+
+      const trade = alphaRoute.trade;
+
+      const amountOut = trade.outputAmount.quotient.toString();
+
+      const priceImpact = trade.priceImpact
+
+        ? parseFloat(trade.priceImpact.toSignificant(4)) * 100
+
+        : 0;
+
+      let path = "unknown";
+
+      try {
+
+        const r = trade.swaps[0].route.path;
+
+        path = r.map((t) => t.symbol ?? t.address).join("→");
+
+      } catch {}
+
+      return res.json({
+
+        route: "UNISWAP_V3",
+
+        amountOut,
+
+        minimumAmountOut: amountOut,
+
+        priceImpact,
+
+        executionPrice: trade.executionPrice
+
+          ? trade.executionPrice.toSignificant(6)
+
+          : "0",
+
+        bestPath: path,
+
+        timestamp: new Date().toISOString(),
+
+      });
+
+    }
+
+    // ------------------------------
+
+    // 🔥 Step2: QuoterV2 fallback (멀티홉 강제)
+
+    // ------------------------------
+
+    const quote = await quoter.callStatic.quoteExactInputSingle({
+
+      tokenIn,
+
+      tokenOut,
+
+      amountIn,
+
+      fee: 3000,
+
+      sqrtPriceLimitX96: 0,
+
+    });
+
+    const out = quote.amountOut.toString();
+
+    return res.json({
+
+      route: "UNISWAP_QUOTER_V2",
+
+      amountOut: out,
+
+      minimumAmountOut: out,
+
+      priceImpact: 0,
+
+      executionPrice: "0",
+
+      bestPath: "QuoterV2(single)",
+
+      timestamp: new Date().toISOString(),
+
+    });
+
+  } catch (e) {
+
+    console.log("[SWAP QUOTE ERROR]", e);
+
+    return res.status(500).json({ error: "quote_failed", details: e.message });
+
+  }
+
+});
+
+// ---------------------------------------------------------------
+
+// POST /swap/execute
+
+// ---------------------------------------------------------------
+
+app.post("/swap/execute", async (req, res) => {
+
+  try {
+
+    const { tokenIn, tokenOut, amountIn, userAddress, slippage = 0.5 } =
+
+      req.body;
+
+    if (!tokenIn || !tokenOut || !amountIn || !userAddress) {
+
+      return res.status(400).json({
+
+        error: "missing_parameters",
+
+        required: ["tokenIn", "tokenOut", "amountIn", "userAddress"],
+
+      });
+
+    }
+
+    // NOVA → 커스텀 라우터 필요
+
+    if (
+
+      tokenIn.toLowerCase() === NOVA.address ||
+
+      tokenOut.toLowerCase() === NOVA.address
+
+    ) {
+
+      return res.json({
+
+        route: "NOVA_CUSTOM_CONTRACT",
+
+        status: "custom_contract_required",
+
+      });
+
+    }
+
+    const tokenA = await getToken(tokenIn);
+
+    const tokenB = await getToken(tokenOut);
+
+    const amountJSBI = JSBI.BigInt(amountIn.toString());
+
+    const alphaRoute = await router.route(
+
+      CurrencyAmount.fromRawAmount(tokenA, amountJSBI),
+
+      tokenB,
+
+      TradeType.EXACT_INPUT,
+
+      {
+
+        recipient: userAddress,
+
+        slippageTolerance: new Percent(
+
+          JSBI.BigInt(Math.round(slippage * 100)),
+
+          JSBI.BigInt(10000)
+
+        ),
+
+        deadline: Math.floor(Date.now() / 1000) + 1800,
+
+      }
+
+    );
+
+    if (!alphaRoute || !alphaRoute.methodParameters) {
+
+      return res.status(400).json({
+
+        error: "execution_data_failed",
+
+      });
+
+    }
+
+    return res.json({
+
+      route: "UNISWAP_V3",
+
+      status: "ready_to_sign",
+
+      txData: {
+
+        to: alphaRoute.methodParameters.to,
+
+        from: userAddress,
+
+        data: alphaRoute.methodParameters.calldata,
+
+        value: alphaRoute.methodParameters.value,
+
+      },
+
+    });
+
+  } catch (e) {
+
+    console.log("[SWAP EXECUTE ERROR]", e);
+
+    return res.status(500).json({
+
+      error: "execution_failed",
+
+      details: e.message,
+
+    });
+
+  }
+
 });
 
