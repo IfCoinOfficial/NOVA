@@ -302,7 +302,7 @@ app.get('/swap/quote', async (req, res) => {
       });
     }
 
-    console.log(`[SWAP QUOTE] ${tokenIn} → ${tokenOut}`);
+    console.log(`[SWAP QUOTE] ${tokenIn} → ${tokenOut}, amount: ${amountIn}`);
 
     // NOVA 거래쌍 감지
     if (tokenIn.toLowerCase() === NOVA.address.toLowerCase() || 
@@ -317,9 +317,19 @@ app.get('/swap/quote', async (req, res) => {
       });
     }
 
+    let amountInBigInt;
+    try {
+      amountInBigInt = BigInt(amountIn);
+    } catch (e) {
+      return res.status(400).json({ 
+        error: 'invalid_amount',
+        details: `amountIn must be a valid BigInt string: ${e.message}`
+      });
+    }
+
     const amount = CurrencyAmount.fromRawAmount(
       tokenIn.toLowerCase() === POL.address.toLowerCase() ? POL : USDT,
-      BigInt(amountIn)
+      amountInBigInt
     );
 
     const route = await router.route(
@@ -384,9 +394,19 @@ app.post('/swap/execute', async (req, res) => {
       });
     }
 
+    let amountInBigInt;
+    try {
+      amountInBigInt = BigInt(amountIn);
+    } catch (e) {
+      return res.status(400).json({ 
+        error: 'invalid_amount',
+        details: `amountIn must be a valid BigInt string: ${e.message}`
+      });
+    }
+
     const amount = CurrencyAmount.fromRawAmount(
       tokenIn.toLowerCase() === POL.address.toLowerCase() ? POL : USDT,
-      BigInt(amountIn)
+      amountInBigInt
     );
 
     const route = await router.route(
@@ -421,3 +441,4 @@ app.post('/swap/execute', async (req, res) => {
     res.status(500).json({ error: 'execution_failed', details: e.message });
   }
 });
+
