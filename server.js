@@ -401,9 +401,10 @@ app.get('/swap/quote', async (req, res) => {
       });
     }
 
+    // ✅ JSBI.BigInt로 변환 (Uniswap SDK-core는 JSBI만 허용)
     const amount = CurrencyAmount.fromRawAmount(
       tokenInObj,
-      amountInBigInt
+      JSBI.BigInt(amountInBigInt.toString())
     );
 
     const route = await router.route(
@@ -495,9 +496,10 @@ app.post('/swap/execute', async (req, res) => {
       });
     }
 
+    // ✅ JSBI.BigInt로 변환 (Uniswap SDK-core는 JSBI만 허용)
     const amount = CurrencyAmount.fromRawAmount(
       tokenInObj,
-      amountInBigInt
+      JSBI.BigInt(amountInBigInt.toString())
     );
 
     const route = await router.route(
