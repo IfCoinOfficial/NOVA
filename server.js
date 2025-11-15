@@ -345,7 +345,7 @@ const { AlphaRouter, ChainId } = sorPkg;
 // 🔧 CommonJS 호환성 처리 (@uniswap/sdk-core는 CommonJS 모듈)
 import sdkCorePkg from "@uniswap/sdk-core";
 
-const { Token, CurrencyAmount, TradeType, Percent, SwapType } = sdkCorePkg;
+const { Token, CurrencyAmount, TradeType, Percent } = sdkCorePkg;
 
 // POLYGON RPC
 
@@ -555,8 +555,6 @@ app.get("/swap/quote", async (req, res) => {
       ),
 
       deadline: Math.floor(Date.now() / 1000) + 1800,
-
-      type: SwapType.SWAP_ROUTER_02,
 
     };
 
