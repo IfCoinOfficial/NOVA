@@ -340,7 +340,7 @@ import JSBI from "jsbi";
 
 import sorPkg from "@uniswap/smart-order-router";
 
-const { AlphaRouter, ChainId, SwapType } = sorPkg;
+const { AlphaRouter, ChainId } = sorPkg;
 
 import {
 
@@ -351,6 +351,8 @@ import {
   TradeType,
 
   Percent,
+
+  SwapType,
 
 } from "@uniswap/sdk-core";
 
@@ -647,7 +649,20 @@ app.get("/swap/quote", async (req, res) => {
 
     });
 
-    const out = quote.amountOut.toString();
+    // 🔧 표준 반환값 처리 (QuoterV2 docs 기준)
+    // Returns: (uint256 amountOut, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed, uint256 gasEstimate)
+    const amountOut = quote[0];
+    const sqrtPriceX96After = quote[1];
+    const initializedTicksCrossed = quote[2];
+    const gasEstimate = quote[3];
+
+    const out = amountOut.toString();
+
+    console.log(`   ✅ QuoterV2 응답 (표준 처리)`);
+    console.log(`      - amountOut: ${out}`);
+    console.log(`      - sqrtPriceX96After: ${sqrtPriceX96After.toString()}`);
+    console.log(`      - initializedTicksCrossed: ${initializedTicksCrossed}`);
+    console.log(`      - gasEstimate: ${gasEstimate.toString()}`);
 
     return res.json({
 
@@ -662,6 +677,8 @@ app.get("/swap/quote", async (req, res) => {
       executionPrice: "0",
 
       bestPath: "QuoterV2(single)",
+
+      gasEstimate: gasEstimate.toString(),
 
       timestamp: new Date().toISOString(),
 
