@@ -276,18 +276,23 @@ setTimeout(async () => {
     console.log('\n🔍 [STARTUP] POL → USDT 시세 자동 조회 중...\n');
 
     const baseUrl = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
+    const quoteUrl = `${baseUrl}/swap/quote?tokenIn=0x0000000000000000000000000000000000001010&tokenOut=0xc2132d05d31c914a87c6611c10748aeb04b58e8f&amountIn=1000000000000000000&slippage=0.5`;
+    
+    console.log(`   📍 요청 URL: ${quoteUrl}`);
+    console.log(`   📍 BASE_URL: ${baseUrl}`);
+    console.log(`   📍 PORT: ${PORT}`);
+    console.log(`   📍 CMC_API_KEY: ${CMC_API_KEY ? '✅ SET' : '❌ NOT SET'}`);
 
-    const response = await axios.get(
+    const response = await axios.get(quoteUrl);
 
-      `${baseUrl}/swap/quote?tokenIn=0x0000000000000000000000000000000000001010&tokenOut=0xc2132d05d31c914a87c6611c10748aeb04b58e8f&amountIn=1000000000000000000&slippage=0.5`
-
-    );
+    console.log(`   ✅ HTTP 상태: ${response.status}`);
+    console.log(`   ✅ 응답 데이터:`, JSON.stringify(response.data, null, 2));
 
     if (response.data.route === 'UNISWAP_V3' && response.data.amountOut) {
 
       const usdtAmount = (BigInt(response.data.amountOut) / BigInt(1_000_000)).toString();
 
-      console.log(`💰 [PRICE] 1 POL = ${usdtAmount} USDT`);
+      console.log(`\n💰 [PRICE] 1 POL = ${usdtAmount} USDT`);
 
       console.log(`📊 가격 영향: ${response.data.priceImpact}%`);
 
@@ -295,13 +300,29 @@ setTimeout(async () => {
 
     } else {
 
-      console.log('⚠️  가격 조회 실패\n');
+      console.log(`\n⚠️  가격 조회 실패 - Route: ${response.data?.route || 'unknown'}\n`);
 
     }
 
   } catch (e) {
 
-    console.log(`⚠️  시작 가격 조회 오류: ${e.message}\n`);
+    console.log(`\n❌ [ERROR] 시작 가격 조회 오류`);
+    console.log(`   📍 에러 메시지: ${e.message}`);
+    
+    // axios 에러인 경우
+    if (e.response) {
+      console.log(`   🔴 HTTP 상태코드: ${e.response.status}`);
+      console.log(`   🔴 응답 데이터:`, JSON.stringify(e.response.data, null, 2));
+      console.log(`   🔴 응답 헤더:`, JSON.stringify(e.response.headers, null, 2));
+    } else if (e.request) {
+      console.log(`   🔴 요청은 전송되었으나 응답 없음`);
+      console.log(`   🔴 요청 정보:`, e.request);
+    } else {
+      console.log(`   🔴 요청 설정 중 오류`);
+    }
+    
+    console.log(`   📍 스택 트레이스:`, e.stack);
+    console.log(`   ⏰ 타임스탬프: ${new Date().toISOString()}\n`);
 
   }
 
@@ -471,8 +492,15 @@ app.get("/swap/quote", async (req, res) => {
 
     let { tokenIn, tokenOut, amountIn, slippage = "0.5" } = req.query;
 
+    console.log(`\n📡 [/swap/quote] 요청 수신`);
+    console.log(`   📍 tokenIn: ${tokenIn}`);
+    console.log(`   📍 tokenOut: ${tokenOut}`);
+    console.log(`   📍 amountIn: ${amountIn}`);
+    console.log(`   📍 slippage: ${slippage}`);
+
     if (!tokenIn || !tokenOut || !amountIn) {
 
+      console.log(`   ❌ 필수 파라미터 누락`);
       return res.status(400).json({
 
         error: "missing_parameters",
@@ -485,7 +513,7 @@ app.get("/swap/quote", async (req, res) => {
 
     console.log(
 
-      `[SWAP QUOTE] ${tokenIn} → ${tokenOut}, amount: ${amountIn}`
+      `   ✅ 파라미터 검증 완료: ${tokenIn} → ${tokenOut}, amount: ${amountIn}`
 
     );
 
@@ -641,9 +669,23 @@ app.get("/swap/quote", async (req, res) => {
 
   } catch (e) {
 
-    console.log("[SWAP QUOTE ERROR]", e);
+    console.log(`\n❌ [SWAP QUOTE ERROR] 상세 진단`);
+    console.log(`   📍 에러 메시지: ${e.message}`);
+    console.log(`   📍 에러 타입: ${e.constructor.name}`);
+    console.log(`   📍 스택 트레이스:\n${e.stack}`);
+    
+    // RPC 오류인지 확인
+    if (e.message.includes('JsonRpcProvider') || e.message.includes('RPC')) {
+      console.log(`   🔴 RPC 연결 오류 - POLYGON_RPC_URL 확인 필요`);
+      console.log(`   📍 RPC URL: ${POLYGON_RPC}`);
+    }
+    
+    // Token 조회 오류
+    if (e.message.includes('Invalid token')) {
+      console.log(`   🔴 토큰 주소 오류 또는 존재하지 않음`);
+    }
 
-    return res.status(500).json({ error: "quote_failed", details: e.message });
+    return res.status(500).json({ error: "quote_failed", details: e.message, timestamp: new Date().toISOString() });
 
   }
 
