@@ -342,19 +342,10 @@ import sorPkg from "@uniswap/smart-order-router";
 
 const { AlphaRouter, ChainId } = sorPkg;
 
-import {
+// 🔧 CommonJS 호환성 처리 (@uniswap/sdk-core는 CommonJS 모듈)
+import sdkCorePkg from "@uniswap/sdk-core";
 
-  Token,
-
-  CurrencyAmount,
-
-  TradeType,
-
-  Percent,
-
-  SwapType,
-
-} from "@uniswap/sdk-core";
+const { Token, CurrencyAmount, TradeType, Percent, SwapType } = sdkCorePkg;
 
 // POLYGON RPC
 
